@@ -1,0 +1,34 @@
+.container {
+    margin: 2% 20%;
+}
+h1 {
+    font-size: 60px;
+    text-align: center;
+    margin-bottom: 100px;
+}
+h2 {
+    margin: 55px 0;
+    font-size: 42px;
+}
+h3 {
+    margin-top: 50px;
+    font-size: 20px;
+}
+h4 {
+    margin-top: 40px;
+    margin-bottom: 35px;
+    font-size: 20px;
+}
+p {
+    font-size: 18px;
+}
+ul {
+    font-size: 18px;
+
+}
+pre {
+    background-color: #EEE;
+    padding: 30px;
+    margin: 28px 0 40px;
+}
+

@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= title %></title>
+    <link rel='stylesheet' href='/stylesheets/style.css' />
+    <link rel='stylesheet' href='/stylesheets/publish_playlist.css' />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">
+  </head>
+  <body>
+    <h1><%= title %></h1>
+
+    <div id="fifth-kind-publish-playlist">
+    </div>
+  </body>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.js"></script>
+  <script type="module">
+    import  { loader, message } from '/javascripts/components/main.js';
+    import * as fifthKindAPI from "/javascripts/services/fifthKindAPI.js";
+    import * as shotgunAPI from "/javascripts/services/shotgunAPI.js";
+
+    const components = {
+        'loader': loader,
+        'message': message,
+    }
+
+    var fifth_kind = new Vue({
+      el: '#fifth-kind-publish-playlist',
+      components: components,
+      data: () => {
+              return {
+                  playlist_id: '<%= playlist_id %>',
+                  shotgunAuth: "",
+                  playlist_attributes: {},
+                  playlist_relations: {},
+                  versions: [],
+                  showLoader: true,
+                  playlist: "",
+                  auth_token: "",
+                  meta_jwt: "",
+                  crs_jwt: "",
+                  domain_tags: null,
+                  domain: null,
+                  tag_groups: null,
+                  structure_group: null,
+                  production_tag: null,
+                  production_tags: null,
+                  department_tag: null,
+                  department_tags: null,
+                  asset_type_tag: null,
+                  asset_type_tags: null,
+                  category_id: null,
+                  category_tag: null,
+                  category_tags: null,
+                  showMessage: false,
+                  messageType: '',
+                  messageTitle: '',
+                  messageSubject: '',
+                  showWarningModal: false,
+                  invalidFiles: [],
+                  warningModalText: '',
+                  warningModalSubText: '',
+                  loadingText: 'Loading',
+                  allowUpload: true,
+                  preppedFiles: null,
+              }
+          },
+          mounted: async function() {
+              this.auth_token = await fifthKindAPI.fifthKindLogin();
+              this.meta_jwt = await fifthKindAPI.getJWT(this.auth_token);
+              this.crs_jwt = await fifthKindAPI.getUploadJWT(this.auth_token);
+              this.domain_tags = (await fifthKindAPI.getDomainTags(this.meta_jwt));
+              this.structure_group = await fifthKindAPI.getTagGroupByValue(this.meta_jwt, "Structure");
+              this.shotgunAuth = await shotgunAPI.shotgunLogin();
+              const playlist = (await shotgunAPI.shotgunGetEntity(this.shotgunAuth, 'Playlist', this.playlist_id)).data[0];
+              this.playlist_attributes = await playlist.attributes;
+              this.playlist_relations = await playlist.relationships;
+              this.versions = await this.fetchVersionsFromPlaylist(this.shotgunAuth, await this.playlist_relations);
+              this.structure_group && this.versions ? this.showLoader = false : null;
+            },
+            computed: {
+                needsDomain: function() {
+                    return {
+                        'disabled': !this.domain
+                    }
+                },
+                needsDomainProductionDepartment: function() {
+                    return {
+                        'disabled': !this.domain || !this.production_tag || !this.department_tag
+                    }
+                },
+                enableSubmit: function () {
+                    return !this.domain || !this.production_tag || !this.department_tag || !this.category_tag || !this.asset_type_tag
+                }
+            },
+            methods: {
+              async fetchVersionsFromPlaylist(auth_token, playlist) {
+                const playlistVersions = playlist.versions.data;
+                let fullVersions = []
+                playlistVersions.forEach(async version => {
+                  let fetchedVersion = await shotgunAPI.shotgunGetEntity(auth_token, 'Version', 	version.id);
+                  fullVersions.push(await fetchedVersion.data);
+                });
+                return fullVersions;
+              },
+              async validatePublish() {
+                this.versions.forEach(version => {
+                    let version_attributes = version[0].attributes
+                    let isValid = version_attributes.sg_path_to_movie ||  version_attributes.sg_source_file_path || version_attributes.sg_uploaded_movie_mp4
+                    !isValid ? this.invalidFiles.push(version_attributes.code) : null;
+                })
+                if(this.invalidFiles.length === this.versions.length) {
+                    this.warningmodaltext = "All of the versions in the playlist have no local files. please adjust their shotgun paths to upload to fifth kind:";
+                    this.warningmodalsubtext = '';
+                    this.allowupload = false;
+                    this.showWarningModal = true;
+                }
+                else if(this.invalidFiles.length > 0) {
+                    this.warningModalText = "The Following versions cannot be found and will be skipped:";
+                    this.warningModalSubText = 'If you would like to upload the remaining files click "Upload Remaining Files. ' +
+                        'Otherwise hit cancel and contact production technology for any help.';
+                    this.allowUpload = true;
+                    this.showWarningModal = true;
+                }
+                else {
+                    this.prep5thKindApi();
+                }
+              },
+              async prep5thKindApi() {
+                this.loadingText = 'Prepping 5th Kind';
+                this.showLoader = true;
+                let versionsToUpload = [];
+                this.versions.forEach(version => {
+                    let version_attributes = version[0].attributes
+                    let fileExtension = '';
+                    let filePath = '';
+                    if (version_attributes.sg_path_to_movie) {
+                        fileExtension = version_attributes.sg_path_to_movie.replace(/^.*[\\\/]/, '').split('.').pop()
+                        filePath = version_attributes.sg_path_to_movie;
+                    }
+                    else if(version_attributes.sg_source_file_path) {
+                        fileExtension = version_attributes.sg_source_file_path.replace(/^.*[\\\/]/, '').split('.').pop()
+                        filePath = version_attributes.sg_source_file_path;
+                    }
+                    else if(version_attributes.sg_uploaded_movie_mp4) {
+                        fileExtension = version_attributes.sg_uploaded_movie_mp4.replace(/^.*[\\\/]/, '').split('.').pop()
+                        filePath = version_attributes.sg_uploaded_movie_mp4;
+                    }
+                    if(filePath){
+                        const fileName = version_attributes.code + '.' + fileExtension
+                        versionsToUpload.push({
+                            'filepath': filePath,
+                            'filename': fileName
+                        });
+                    }
+                })
+                const prepped_file_response = await fifthKindAPI.prepUploadByFilePath(this.meta_jwt, versionsToUpload);
+                 if(await prepped_file_response.invalid_paths) {
+                     await prepped_file_response.invalid_paths.forEach(path => {
+                         this.invalidFiles.push(path.filename)
+                     })
+                     this.warningModalText = "The following versions in the playlist have invalid local file paths." +
+                         "Please adjust the shotgun fields: 'Path to Source Files', 'Path to Movie' or 'Uploaded Movie Mp4 '" +
+                         " to upload versions to Fifth Kind. If you would like to upload the rest of the " +
+                         "files click upload remaining files:";
+                     this.warningModalSubText = '';
+                     this.allowupload = true;
+                     this.preppedFiles = await prepped_file_response.items
+                     this.showWarningModal= true;
+                     this.showLoader = false;
+                 }
+                 else {
+                     this.publishTo5thKind(await prepped_file_response.items)
+                 }
+              },
+              async publishTo5thKind(prepped_file_response) {
+                this.showLoader = true;
+                const tags = {
+                    "tagValues": [
+                        {
+                            "key": "Domain Purpose",
+                            "value": this.domain.value
+                        },
+                        {
+                            "key": "Production",
+                            "value": this.production_tag.value
+                        },
+                        {
+                            "key": "Department",
+                            "value": this.department_tag.value
+                        },
+                        {
+                            "key": "Category",
+                            "value": this.category_tag.value
+                        },
+                        {
+                            "key": "Asset Type",
+                            "value": this.asset_type_tag.value
+                        }
+                    ]
+                }
+                const groupId = prepped_file_response[0].uploadFileGroupId;
+                const numOfFiles = await prepped_file_response.length;
+                const uploadToken = await fifthKindAPI.getUploadToken(this.crs_jwt, numOfFiles)
+                let upload_obj = {}
+                 await prepped_file_response.forEach(file => {
+                     upload_obj[file.fileId] = file.filePath
+                 })
+                const uploaded_file_response = await fifthKindAPI.uploadFileByPath(upload_obj, this.crs_jwt, uploadToken, groupId)
+                let fileNumBeingUploaded = 0;
+                uploaded_file_response.forEach(async uploaded_file => {
+                     this.loadingText = 'Uploading File ' + fileNumBeingUploaded + '/' + numOfFiles;
+                     await fifthKindAPI.addTagsToFile(this.meta_jwt, uploaded_file.uploadFileId, tags);
+                     fileNumBeingUploaded++;
+                })
+                 this.messageType = 'success';
+                 this.messageTitle = 'Congrats'
+                 this.messageSubject = "Playlist has successfully been uploaded to 5th Kind"
+                 this.showLoader = false;
+                 this.showMessage = true;
+                 setTimeout(() => {
+                     this.showMessage = false
+                 }, 5000)
+              },
+              async pickDomain(domain) {
+                this.domain = domain;
+                this.production_tag = null;
+                this.department_tag = null;
+                this.asset_type_tag = null;
+                this.category_tag = null;
+                const required_groups = await fifthKindAPI.getTagGroupById(this.meta_jwt, this.structure_group[0].id, domain.id, true, true)
+                const production_id = required_groups.find(group => group.domain === "Production").id
+                this.production_tags = await fifthKindAPI.getTagsBySelectedId(this.meta_jwt, production_id, domain.id)
+
+                const department_id = required_groups.find(group => group.domain === "Department").id
+                this.department_tags = await fifthKindAPI.getTagsBySelectedId(this.meta_jwt, department_id, domain.id)
+
+                //Will need this ID outside the scope of this function
+                this.category_id = required_groups.find(group => group.domain === "Category").id
+
+                const asset_type_id = required_groups.find(group => group.domain === "Asset Type").id
+                this.asset_type_tags = await fifthKindAPI.getTagsBySelectedId(this.meta_jwt, asset_type_id, domain.id)
+              },
+              pickProduction(production) {
+                this.production_tag = production;
+                this.department_tag = null;
+                this.asset_type_tag = null;
+                this.category_tag = null;
+              },
+              pickDepartment(department) {
+                this.department_tag = department;
+                this.category_tag = null;
+              },
+              pickCategory(category) {
+                this.category_tag = category;
+              },
+              pickAssetType(asset_type) {
+                this.asset_type_tag = asset_type;
+              },
+              closeShowMissingFileModal() {
+                this.invalidFiles = [];
+                this.showWarningModal= false;
+              },
+              handleProceedUploadClick(preppedFileData) {
+                this.closeShowMissingFileModal();
+                if(preppedFileData) {
+                    return this.publishTo5thKind(preppedFileData)
+                }
+                else {
+                    return this.prep5thKindApi();
+                }
+              },
+            },
+            computed: {
+              needsDomain: function() {
+                 return {
+                     'disabled': !this.domain
+                 }
+              },
+              needsDomainProductionDepartment: function() {
+                  return {
+                      'disabled': !this.domain || !this.production_tag || !this.department_tag
+                  }
+              },
+              enableSubmit: function () {
+                  return !this.domain || !this.production_tag || !this.department_tag || !this.category_tag || !this.asset_type_tag
+
+              }
+            },
+            watch: {
+              domain: async function(val) {
+                if(this.production_tag && this.department_tag) {
+                    const selectedId = this.domain.id + "," + this.production_tag.id + "," + this.department_tag.id;
+                    this.category_tags = await fifthKindAPI.getTagsBySelectedId(this.meta_jwt, this.category_id, selectedId)
+                }
+              },
+              production_tag: async function(val) {
+                if(this.domain && this.department_tag) {
+                    const selectedId = this.domain.id + "," + this.production_tag.id + "," + this.department_tag.id;
+                    this.category_tags = await fifthKindAPI.getTagsBySelectedId(this.meta_jwt, this.category_id, selectedId)
+                }
+              },
+              department_tag: async function(val) {
+                if(this.domain && this.production_tag) {
+                    const selectedId = this.domain.id + "," + this.production_tag.id + "," + this.department_tag.id;
+                    this.category_tags = await fifthKindAPI.getTagsBySelectedId(this.meta_jwt, this.category_id, selectedId)
+                }
+              }
+            },
+            template: `
+            <div>
+              <div v-if="showWarningModal" class="opaque-overlay"></div>
+              <div class="container__modal">
+                  <div v-if="showWarningModal" class="ui modal active">
+                    <div class="header">WARNING</div>
+                    <div class="content">
+                      <p>{{warningModalText}}</p>
+                      <ul>
+                          <li v-for="invalidFile in invalidFiles">{{invalidFile}}</li>
+                      </ul>
+                      <p>{{warningModalSubText}}</p>
+                    </div>
+                    <div class="actions">
+                      <div v-if="allowUpload" class="ui approve button primary" v-on:click="handleProceedUploadClick(preppedFiles)">Upload Remaining Files</div>
+                      <div class="ui cancel button" v-on:click="closeShowMissingFileModal()">Cancel</div>
+                    </div>
+                  </div>
+              </div>
+              <loader v-if="showLoader" :text=loadingText></loader>
+              <message v-if="showMessage"
+                       :type="messageType"
+                       :title="messageTitle"
+                       :message="messageSubject"
+              ></message>
+              <div class="container__tags">
+                  <h3>Tags:</h3>
+                  <div class="table">
+                      <div class="table--col col__tag-picker">
+                          <div class="table label__tag-picker">
+                              Domain:
+                          </div>
+                          <div class="ui compact menu">
+                            <div class="ui simple dropdown item">
+                              <span v-if="domain">{{domain.value}}</span>
+                              <span v-else>----</span>
+                              <i class="dropdown icon"></i>
+                              <div class="menu">
+                                <div v-for="domain in domain_tags" class="item" v-on:click="pickDomain(domain)">{{domain.value}}</div>
+                              </div>
+                            </div>
+                          </div>
+                      </div>
+                      <div class="table--col col__tag-picker">
+                          <div class="table label__tag-picker">
+                              Production:
+                          </div>
+                          <div class="ui compact menu">
+                            <div class="ui simple dropdown item" v-bind:class="needsDomain">
+                              <span v-if="production_tag">{{production_tag.value}}</span>
+                              <span v-else>----</span>
+                              <i class="dropdown icon"></i>
+                              <div class="menu">
+                                <div v-if="production_tags"
+                                     v-for="tag in production_tags"
+                                     v-on:click="pickProduction(tag)"
+                                     class="item">{{tag.value}}</div>
+                              </div>
+                            </div>
+                          </div>
+                      </div>
+                      <div class="table--col col__tag-picker">
+                          <div class="table label__tag-picker">
+                              Department:
+                          </div>
+                          <div class="ui compact menu">
+                            <div class="ui simple dropdown item" v-bind:class="needsDomain">
+                              <span v-if="department_tag">{{department_tag.value}}</span>
+                              <span v-else>----</span>
+                              <i class="dropdown icon"></i>
+                              <div class="menu">
+                                <div v-if="department_tags"
+                                     v-for="tag in department_tags"
+                                     v-on:click="pickDepartment(tag)"
+                                     class="item">{{tag.value}}</div>
+                              </div>
+                            </div>
+                          </div>
+                      </div>
+                      <div class="table--col col__tag-picker">
+                          <div class="table label__tag-picker">
+                              Category:
+                          </div>
+                          <div class="ui compact menu">
+                            <div class="ui simple dropdown item" v-bind:class="needsDomainProductionDepartment">
+                              <span v-if="category_tag">{{category_tag.value}}</span>
+                              <span v-else>----</span>
+                              <i class="dropdown icon"></i>
+                              <div class="menu">
+                                <div v-if="category_tags"
+                                     v-for="tag in category_tags"
+                                     v-on:click="pickCategory(tag)"
+                                     class="item">{{tag.value}}</div>
+                              </div>
+                            </div>
+                          </div>
+                      </div>
+                      <div class="table--col col__tag-picker">
+                          <div class="table label__tag-picker">
+                              Asset Type:
+                          </div>
+                          <div class="ui compact menu">
+                            <div class="ui simple dropdown item" v-bind:class="needsDomain">
+                              <span v-if="asset_type_tag">{{asset_type_tag.value}}</span>
+                              <span v-else>----</span>
+                              <i class="dropdown icon"></i>
+                              <div class="menu">
+                                <div v-if="asset_type_tags"
+                                     v-for="tag in asset_type_tags"
+                                     v-on:click="pickAssetType(tag)"
+                                     class="item">{{tag.value}}</div>
+                              </div>
+                            </div>
+                          </div>
+                      </div>
+                  </div>
+                  <div class="table container__publish-button">
+                      <span v-if="enableSubmit" data-tooltip="All Tags Must be Selected to Publish">
+                          <button class="ui primary button huge button__fifth-pub disabled">Publish to 5th Kind</button>
+                      </span>
+                      <span v-if="!enableSubmit">
+                          <button class="ui primary button huge button__fifth-pub"
+                          v-on:click="validatePublish">Publish to 5th Kind</button>
+                      </span>
+                  </div>
+              </div>
+              <div class="ui horizontal divider">
+                  Playlist
+              </div>
+              <h3>
+                  {{playlist_attributes.code}}
+              </h3>
+              <div class="table container__playlist">
+                  <div class="table--col-no-grow">
+                      <div class="container__image">
+                          <img v-if="playlist_attributes.image" class="playlist__thumbnail" :src="playlist_attributes.image">
+                          <i v-else class="image-icon__missing images outline icon"></i>
+                      </div>
+                  </div>
+                  <div class="table--col col__playlist-info">
+                      <p><span class="label__playlist">status:</span> {{playlist_attributes.sg_status_list}}</p>
+                      <p><span class="label__playlist"> description:</span> {{playlist_attributes.description}}</p>
+                  </div>
+              </div>
+              <h3 class="title__versions">Versions:</h3>
+              <div class="table header">
+                  <div class="table--col-sm">
+                      Status
+                  </div>
+                  <div class="table--col">
+                      Thumbnail
+                  </div>
+                  <div class="table--col">
+                      Artist
+                  </div>
+                  <div class="table--col">
+                      Name
+                  </div>
+                  <div class="table--col">
+                      Description
+                  </div>
+              </div>
+              <div class="table row__versions" v-for="version in versions">
+                <div class="table--col-sm">
+                    {{version[0].attributes.sg_status_list}}
+                </div>
+                <div class="table--col">
+                    <img class="versions__thumbnail" :src="version[0].attributes.image">
+                </div>
+                <div class="table--col">
+                  user placeholder
+                </div>
+                <div class="table--col">
+                    <a :href="version[0].attributes.url">{{version[0].attributes.code}}</a>
+                </div>
+                <div class="table--col">
+                    {{version[0].attributes.description}}
+                </div>
+              </div>
+            </div>
+            `
+          });
+
+    export default {fifth_kind};
+  </script>
+
+</html>
