@@ -5,7 +5,7 @@
     <img src="./public/images/laika_logo.png" alt="Logo" width="120" height="80">
   </a>
 
-  <h3 align="center">Shotgun Playlist to 5th Kind</h3>
+  <h3 align="center">ShotGrid Playlist to 5th Kind</h3>
 
 <!-- TABLE OF CONTENTS -->
 <details open="open">
@@ -33,9 +33,11 @@
 
 ## About The Project
 
-The Shotgun Playlist to 5th Kind repo is a server side rendered Express/Vue application that leverages Autodesk's Shotgun Rest API and 5th Kind's Rest API to take a playlist from Shotgun and upload it to 5th Kind.
+The ShotGrid Playlist to 5th Kind repo is a server side rendered Express/Vue application that leverages Autodesk's 
+ShotGrid REST API and 5th Kind's REST API to take a playlist from ShotGrid and upload it to 5th Kind.
 
-**_Note:_** The following repo is set for a locally hosted version of shotgun and not does not officially support shotgun-cloud based implementations.
+**_Note:_** The following repo is set for a locally hosted version of ShotGrid and not does not officially support 
+ShotGrid-cloud based implementations.
 
 ### Built With
 
@@ -52,7 +54,7 @@ The Shotgun Playlist to 5th Kind repo is a server side rendered Express/Vue appl
 
 - npm 6.14.8
 - node 12.19.0
-- locally hosted instance of Shotgun
+- locally hosted instance of ShotGrid
 - 5th Kind Account
 
 ### Installation
@@ -72,7 +74,9 @@ npm install
 
 ##### Obtain Shotgun Script Name and Key
 
-In order to get authenticated into Shotgun as well as track instances in which this AMI is used, you will need to obtain a script key and script name from Shotgun. Follow Shotgun's official documentation if you need instruction on how to do this: https://support.shotgunsoftware.com/hc/en-us/articles/219031368-Create-and-manage-API-scripts
+In order to get authenticated into ShotGrid as well as track instances in which this AMI is used, you will need to 
+obtain a script key and script name from ShotGrid. Follow ShotGrid's official documentation if you need instructions 
+on how to do this: https://support.shotgunsoftware.com/hc/en-us/articles/219031368-Create-and-manage-API-scripts
 
 ##### Create New Action Menu Item (AMI)
 
@@ -80,7 +84,9 @@ Inside of shotgun [create a new AMI](https://support.shotgunsoftware.com/hc/en-u
 
 ##### Edit Config
 
-In order to have the server run and connect to the all the external 3rd party API's you must edit the `./user_config.js` file. Inside that file is a single exported object that once filled out will give the application all the credentials it needs to interact with Shotgun and 5th Kind.
+In order to have the server run and connect to the all the external 3rd party APIs you must edit the `./user_config.js` 
+file. Inside that file is a single exported object that once filled out will give the application all the credentials it 
+needs to interact with Shotgun and 5th Kind.
 
 ```sh
 const config = {
@@ -112,21 +118,30 @@ npm run devstart
 
 ## Usage
 
-The following application is intended to be used as a standalone application along side with your locally hosted instance of Shotgun (It is assumed that you are not utilizing cloud-based shotgun for this implementation).
+The following application is intended to be used as a standalone application with your locally hosted instance of 
+ShotGrid (it is assumed that you are not utilizing cloud-based shotgun for this implementation).
 
-This repo acts as a framework for you to [add custom Action Menu Items](https://support.shotgunsoftware.com/hc/en-us/articles/219031318-Creating-custom-Action-Menu-Items) (AMI) to Shotgun, but is mostly responsible for housing an AMI to upload a playlist from Shotgun to 5th Kind through Shotgun's AMI framework.
+This repo acts as a framework for you to 
+[add custom Action Menu Items](https://support.shotgunsoftware.com/hc/en-us/articles/219031318-Creating-custom-Action-Menu-Items) 
+(AMI) to ShotGrid, but is mostly responsible for housing an AMI to upload a playlist from Shotgun to 5th Kind through 
+ShotGrid's AMI framework.
 
-When the application is launched it will first authenticate between 5th-Kind and Shotgun. Then it will fetch all relevant data (The Shotgun Playlist and Version information and the 5th Kind Tags). A user will then need to select what Tags they want associated with the playlist they intend on uploading. Once they click upload, the code will check the follow Shotgun fields to see if the verisons exist on disk and then upload the media to 5th kind:
+When the application is launched it will first authenticate between 5th Kind and ShotGrid. Then it will fetch all 
+relevant data (the ShotGrid Playlist and Version information and the 5th Kind Tags). A user will then need to select 
+what Tags they want associated with the Playlist they intend on uploading. Once they click upload, the code will check 
+the following ShotGrid fields to see if the versions exist on disk and then upload the media to 5th Kind:
 
 - `sg_path_to_movie`
 - `sg_source_file_path`
 - `sg_uploaded_movie_mp4`
 
-**_Note_**: These paths where the media lives are custom and user defined to the another instance of Shotgun. If you do not want create or use these fields just edit the `prep5thKindApi()` function inside of `./views/fifthkind.ejs` to have the Shotgun fields you wish to use.
+**_Note_**: These paths where the media resides are custom and user defined to the another instance of ShotGrid. If you 
+do not want to create or use these fields just edit the `prep5thKindApi()` function inside of `./views/fifthkind.ejs` to 
+have the ShotGrid fields you wish to use.
 
 #### Code Structure
 
-The code is broken up into three different directories
+The code is broken up into three different directories:
 
 ```sh
 - ./public
@@ -134,9 +149,11 @@ The code is broken up into three different directories
 - ./views
 ```
 
-The public directory is responsible for hosing static files to be used by other other views. It stores, images, css stylesheets, common Vue components, and common JS services.
+The public directory is responsible for hosing static files to be used by other views. It stores, images, css 
+stylesheets, common Vue components, and common JS services.
 
-The routes directory is resposible for housing all your endpoints. It's here where you create new endpoints to either server-side render views or implementing other REST endpoints.
+The routes directory is responsible for housing all your endpoints. It's here where you create new endpoints to either 
+server-side render views or implementing other REST endpoints.
 
 The views directory houses all the ejs templates and main page Vue components.
 
